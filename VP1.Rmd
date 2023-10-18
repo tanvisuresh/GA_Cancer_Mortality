@@ -1,0 +1,99 @@
+---
+title: "Virtual Portfolio 1"
+author: "Tanvi Suresh"
+output: 
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes 
+          
+date: "2022-09-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse,sf,tmap,rio,dplyr)
+```
+
+## Importing and joining datasets
+### Importing tracts geopackage and life expectancy csv file. Transforming GA Tracts to Albers Equal Area
+```{r, message=F}
+
+gatracts <- st_read('ga-tracts.gpkg') %>%
+  st_transform(5070)
+gale <- read.csv('GA_A (1).csv')
+
+```
+
+### Creating "tracts" dataset by merging GA life expectancy ("gale") dataset onto "gatracts" dataset with a leftjoin to keep the total number of tracts (even the tracts without life expectancy data -192 missing) 
+```{r}
+gale <- gale %>%
+    mutate(Tract.ID=as.character(Tract.ID))
+tracts <- gatracts %>%
+ left_join(gale, by =c('GEOID' = 'Tract.ID'))
+```
+
+### Creating county dataset from full tracts dataset by aggreggating tracts life expectancy and taking the mean to get a mean life expectancy for the county
+```{r, message=F}
+county <- tracts %>%
+  group_by(CTY_NAME) %>%
+  summarize(mean_e0 = mean(e.0., na.rm=T))
+```
+
+## Life Expectancy Maps
+```{r, message=F}
+
+map1 <- tm_shape(tracts) + 
+  tm_fill('e.0.',
+          style = 'quantile',
+         palette= 'BuGn',
+         title= 'Life Expectancy, Years')+
+    tm_borders(alpha=0.2)+
+    tm_layout(main.title='Life Expectancy, GA Tracts',legend.outside=T)+
+    tm_credits('Source: U.S. Small-area Life Expectancy Estimates Project, 2010-2015',
+               position = c('LEFT', 'BOTTOM'))
+    
+map2 <- tm_shape(county) + 
+  tm_fill('mean_e0',
+          style = 'quantile',
+         palette= 'Blues',
+         title='Mean life Expectancy, Years')+
+    tm_borders(alpha=0.2)+
+    tm_layout(main.title='Life Expectancy, GA County',legend.outside=T)+
+     tm_credits('Source: U.S. Small-area Life Expectancy Estimates Project, 2010-2015',
+               position = c('LEFT', 'BOTTOM'))
+tmap_arrange(map1,map2, nrow=1, ncol=2)
+#Palette was chosen so that the lower value has some color as that is what we might want audience to focus on (not the darker colors). Thought about a diverging palette like RdBu but didn't choose since there isn't a null value for life expectancy and because it made the map harder to read at tract/county level. This might make more sense for the state/country level.
+#Chose two different (but similar) palettes since the quantiles are different in both maps
+```
+## Life Expectancy Ranges by Tract & County
+
+Area | Minimum| Maximum
+:----------:|:----------:|:-----------:
+County    | 71.8  | 81.0
+Tracts | 63.3 | 87.6
+
+
+
+```{r,message=F}
+
+tracts_max <- max(tracts$e.0.,na.rm=T) #87.6
+tracts_min <- min(tracts$e.0.,na.rm=T) #63.3
+
+county_max <- max(county$mean_e0,na.rm=T) #80.975
+county_min <- min(county$mean_e0,na.rm=T) #71.8
+#Missing values were removed before finding max/min
+
+```
+
+
+
+## 5 Highest Life Expectancy Counties & 5 Lowest Life Expectancy Counties
+```{r}
+county_test <- county %>%
+  arrange(desc(mean_e0))%>%
+  slice(1:5,155:159)%>%
+  st_drop_geometry()
+county_test
+```
+
